@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Dashboard - zerøbyte</title>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: white; padding: 20px; min-height: 100vh; }
+.container { max-width: 800px; margin: 0 auto; }
+.card { background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(20px); border-radius: 24px; padding: 25px; margin-bottom: 20px; border: 1px solid rgba(255, 255, 255, 0.1); }
+.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; }
+.logo h1 { font-size: 24px; background: linear-gradient(135deg, #fff, #a855f7); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.logout-btn { background: rgba(239,68,68,0.2); border: none; padding: 10px 20px; border-radius: 12px; color: #fca5a5; cursor: pointer; }
+.profile-card { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+.avatar { width: 80px; height: 80px; border-radius: 40px; background: linear-gradient(135deg, #7c3aed, #a855f7); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
+.avatar i { font-size: 40px; color: white; }
+.stats-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 15px; margin: 20px 0; }
+.stat-card { background: rgba(255,255,255,0.05); padding: 15px; border-radius: 16px; text-align: center; }
+.stat-number { font-size: 24px; font-weight: bold; color: #a855f7; }
+.section-title { margin: 20px 0 15px 0; font-size: 18px; }
+.friend-list { display: flex; flex-direction: column; gap: 10px; }
+.friend-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 16px; }
+.btn-sm { padding: 8px 16px; border: none; border-radius: 12px; background: linear-gradient(135deg, #7c3aed, #a855f7); color: white; cursor: pointer; }
+.empty { text-align: center; padding: 40px; color: #64748b; }
+@media (max-width: 600px) { .profile-card { flex-direction: column; text-align: center; } }
+</style>
+</head>
+<body>
+<div class="container">
+    <div class="card">
+        <div class="header">
+            <div class="logo"><h1><i class="fas fa-comment-dots"></i> zerøbyte</h1></div>
+            <button class="logout-btn" id="logoutBtn"><i class="fas fa-sign-out-alt"></i> Logout</button>
+        </div>
+        <div id="profileSection" class="profile-card">
+            <div class="avatar" id="avatar"><i class="fas fa-user"></i></div>
+            <div><h2 id="displayName">Loading...</h2><p id="userHandle"></p></div>
+        </div>
+        <div class="stats-grid">
+            <div class="stat-card"><div class="stat-number" id="friendsCount">0</div><div>Friends</div></div>
+            <div class="stat-card"><div class="stat-number" id="messagesCount">0</div><div>Messages</div></div>
+        </div>
+        <div class="section-title"><i class="fas fa-users"></i> Your Friends</div>
+        <div id="friendsList" class="friend-list"><div class="empty">Loading...</div></div>
+        <div style="display: flex; gap: 10px; margin-top: 20px;">
+            <button class="btn-sm" onclick="location.href='profile.html'" style="flex:1;">Edit Profile</button>
+            <button class="btn-sm" onclick="location.href='search.html'" style="flex:1;">Find Friends</button>
+            <button class="btn-sm" onclick="location.href='chat.html'" style="flex:1;">Messages</button>
+        </div>
+    </div>
+</div>
+<script>
+const _supabase = window.supabase.createClient(
+    "https://ievgpyzphaialonfonof.supabase.co",
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlldmdweXpwaGFpYWxvbmZvbm9mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2Njk2MTAsImV4cCI6MjA5NDI0NTYxMH0.tg3ao7uROEZqvw1Tlkpe2o5glMF7LNRDj6uYaOs_Zvs"
+);
+let currentUser = null;
+
+async function loadUser() {
+    const { data: { user } } = await _supabase.auth.getUser();
+    if (!user) { window.location.href = "login.html"; return; }
+    currentUser = user;
+    const { data: profile } = await _supabase.from("profiles").select("*").eq("id", user.id).single();
+    document.getElementById("displayName").innerText = profile?.display_name || user.email.split('@')[0];
+    document.getElementById("userHandle").innerHTML = profile?.user_handle ? `<i class="fas fa-at"></i> ${profile.user_handle}` : "";
+    if (profile?.avatar_url) document.getElementById("avatar").innerHTML = `<img src="${profile.avatar_url}">`;
+    await loadFriends();
+    await loadMessageCount();
+}
+
+async function loadFriends() {
+    const { data: connections } = await _supabase.from("connections").select("friend_id").eq("user_id", currentUser.id).eq("status", "accepted");
+    document.getElementById("friendsCount").innerText = connections?.length || 0;
+    if (!connections || connections.length === 0) { document.getElementById("friendsList").innerHTML = '<div class="empty">No friends yet. <a href="search.html" style="color:#a855f7;">Find friends →</a></div>'; return; }
+    const friendIds = connections.map(c => c.friend_id);
+    const { data: friends } = await _supabase.from("profiles").select("*").in("id", friendIds);
+    if (friends) document.getElementById("friendsList").innerHTML = friends.map(f => `<div class="friend-item"><div><strong>${escapeHtml(f.display_name || f.username)}</strong><br><small>${f.user_handle ? '@'+f.user_handle : ''}</small></div><button class="btn-sm" onclick="messageUser('${f.id}')">Message</button></div>`).join("");
+}
+
+async function loadMessageCount() {
+    const { count } = await _supabase.from("messages").select("*", { count: 'exact', head: true }).eq("receiver_id", currentUser.id).eq("is_read", false);
+    document.getElementById("messagesCount").innerText = count || 0;
+}
+
+function messageUser(id) { window.location.href = `chat.html?user=${id}`; }
+
+document.getElementById("logoutBtn").addEventListener("click", async () => { await _supabase.auth.signOut(); window.location.href = "index.html"; });
+
+function escapeHtml(t) { if(!t) return ''; const d=document.createElement('div'); d.textContent=t; return d.innerHTML; }
+
+loadUser();
+</script>
+</body>
+</html>
